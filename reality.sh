@@ -75,7 +75,7 @@ install_singbox() {
         PORT="$1"
         echo "使用指定端口: $PORT"
     else
-        PORT=$((RANDOM % 10000 + 10000))
+        PORT=$((RANDOM % 20001 + 30000))
         echo "使用随机端口: $PORT"
     fi
 
