@@ -4,14 +4,14 @@
 
 在 Linux 服务器上一键部署 sing-box，同时开启 **VLESS+Reality** 和 **Hysteria2** 两个协议，自动生成连接信息。
 
-## 快速安装
+## 快速安装 / 卸载
 
 ```bash
-# 默认随机端口
+# 安装（端口随机 30000-50000）
 bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) install
 
-# 指定 VLESS 端口（Hysteria2 端口自动 +1）
-bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) install 34567
+# 卸载
+bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) uninstall
 ```
 
 执行后输出示例：
@@ -56,12 +56,6 @@ Hysteria2:
 - **Hysteria2** 使用 `bing.com` 作为 SNI，基于 QUIC 传输
 - 自动检测公网 IP（多备用源）
 - 注册为 systemd 服务，开机自启
-
-## 卸载
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) uninstall
-```
 
 ## 更新记录
 
