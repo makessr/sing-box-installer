@@ -41,26 +41,29 @@ Hysteria2:
 
 直接复制上方的 **VLESS 链接** 和 **Hysteria2 链接**，在客户端中导入即可。
 
-### sing-box 配置片段
+### sing-box 客户端配置
 
-在现有 sing-box 配置的 `inbounds` 中添加：
+在 `outbounds` 中添加：
 
 ```json
 {
   "type": "vless",
-  "listen": "::",
-  "listen_port": 34567,
-  "users": [
-    { "uuid": "4e1a7b2c-8f3d-4a5e-9b6c-1d2e3f4a5b6c", "flow": "xtls-rprx-vision" }
-  ],
+  "tag": "Reality",
+  "server": "1.2.3.4",
+  "server_port": 34567,
+  "uuid": "4e1a7b2c-8f3d-4a5e-9b6c-1d2e3f4a5b6c",
+  "flow": "xtls-rprx-vision",
   "tls": {
     "enabled": true,
     "server_name": "gateway.icloud.com",
+    "utls": {
+      "enabled": true,
+      "fingerprint": "ios"
+    },
     "reality": {
       "enabled": true,
-      "handshake": { "server": "gateway.icloud.com", "server_port": 443 },
-      "private_key": "xxxxx",
-      "short_id": ["abcd1234"]
+      "public_key": "xxxxx",
+      "short_id": "abcd1234"
     }
   }
 }
@@ -69,11 +72,10 @@ Hysteria2:
 ```json
 {
   "type": "hysteria2",
-  "listen": "::",
-  "listen_port": 34568,
-  "users": [
-    { "password": "abc123xyz" }
-  ],
+  "tag": "Hysteria2",
+  "server": "1.2.3.4",
+  "server_port": 34568,
+  "password": "abc123xyz",
   "tls": {
     "enabled": true,
     "server_name": "bing.com",
