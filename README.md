@@ -8,10 +8,10 @@
 
 ```bash
 # 默认随机端口
-bash <(curl -fsSL https://raw.githubusercontent.com/makessr/one-times/main/reality.sh) install
+bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) install
 
 # 指定 VLESS 端口（Hysteria2 端口自动 +1）
-bash <(curl -fsSL https://raw.githubusercontent.com/makessr/one-times/main/reality.sh) install 34567
+bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) install 34567
 ```
 
 执行后输出示例：
@@ -60,7 +60,7 @@ Hysteria2:
 ## 卸载
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/makessr/one-times/main/reality.sh) uninstall
+bash <(curl -fsSL https://raw.githubusercontent.com/makessr/sing-box-installer/main/reality.sh) uninstall
 ```
 
 ## 更新记录
