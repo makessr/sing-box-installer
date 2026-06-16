@@ -145,8 +145,8 @@ install_singbox() {
         "enabled": true,
         "server_name": "$HY2_SNI",
         "alpn": ["h3"],
-        "key_file": "$CONFIG_DIR/hy2.key",
-        "certificate_file": "$CONFIG_DIR/hy2.crt"
+        "key_path": "$CONFIG_DIR/hy2.key",
+        "certificate_path": "$CONFIG_DIR/hy2.crt"
       }
     }
   ],
