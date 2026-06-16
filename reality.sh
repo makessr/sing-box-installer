@@ -97,6 +97,11 @@ install_singbox() {
 
     mkdir -p "$CONFIG_DIR"
 
+    # 生成 Hysteria2 自签证书
+    openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+      -days 3650 -keyout "$CONFIG_DIR/hy2.key" -out "$CONFIG_DIR/hy2.crt" \
+      -subj "/CN=$HY2_SNI" 2>/dev/null
+
     cat > "$CONFIG_FILE" <<EOF
 {
   "log": {
@@ -137,9 +142,11 @@ install_singbox() {
         }
       ],
       "tls": {
-        "enabled": false,
+        "enabled": true,
         "server_name": "$HY2_SNI",
-        "alpn": ["h3"]
+        "alpn": ["h3"],
+        "key_file": "$CONFIG_DIR/hy2.key",
+        "certificate_file": "$CONFIG_DIR/hy2.crt"
       }
     }
   ],
@@ -202,7 +209,7 @@ EOF
     echo "  SNI: $HY2_SNI"
     echo "  密码: $HY2_PASSWORD"
     echo "  链接:"
-    HY2_URL="hysteria2://${HY2_PASSWORD}@${SERVER_IP}:${HY2_PORT}?sni=${HY2_SNI}&insecure=0&alpn=h3#Hysteria2"
+    HY2_URL="hysteria2://${HY2_PASSWORD}@${SERVER_IP}:${HY2_PORT}?sni=${HY2_SNI}&insecure=1&alpn=h3#Hysteria2"
     echo "  $HY2_URL"
     echo "=============================="
 
