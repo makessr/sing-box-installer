@@ -137,7 +137,7 @@ install_singbox() {
         }
       ],
       "tls": {
-        "enabled": true,
+        "enabled": false,
         "server_name": "$HY2_SNI",
         "alpn": ["h3"]
       }
