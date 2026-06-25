@@ -265,26 +265,6 @@ generate_config() {
   "log": {
     "level": "info"
   },
-  "dns": {
-    "servers": [
-      {
-        "type": "https",
-        "server": "1.1.1.1",
-        "server_port": 443,
-        "detour": "direct-out"
-      },
-      {
-        "type": "local",
-        "tag": "dns-local"
-      }
-    ],
-    "rules": [
-      {
-        "outbound": "any",
-        "server": "dns-local"
-      }
-    ]
-  },
   "inbounds": [
     {
       "type": "vless",
@@ -354,12 +334,6 @@ generate_config() {
     }
   ],
   "route": {
-    "rules": [
-      {
-        "geoip": "cn",
-        "outbound": "direct-out"
-      }
-    ],
     "final": "direct-out"
   }
 }
