@@ -55,8 +55,8 @@ get_sysinfo(){
     else
         bbr_val="未启用"
     fi
-    v4=$(curl -s4m5 icanhazip.com -k 2>/dev/null)
-    v6=$(curl -s6m5 icanhazip.com -k 2>/dev/null)
+    v4=$(curl -s4m5 icanhazip.com -k 2>/dev/null || true)
+    v6=$(curl -s6m5 icanhazip.com -k 2>/dev/null || true)
     if [[ -z $v4 ]]; then
         vps_ipv4='无IPV4'
         vps_ipv6="$v6"
@@ -167,7 +167,7 @@ get_latest_version() {
         echo "$_CACHED_VERSION"
         return
     fi
-    _CACHED_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name')
+    _CACHED_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | jq -r '.tag_name' || echo "")
     echo "$_CACHED_VERSION"
 }
 
