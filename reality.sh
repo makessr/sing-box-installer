@@ -94,8 +94,7 @@ check_enabled() {
 
 check_uninstall() {
     local _st
-    check_status
-    _st=$?
+    if check_status; then _st=0; else _st=$?; fi
     if [[ $_st != 2 ]]; then
         yellow "sing-box 已安装，可先卸载再安装" && sleep 2
         return 1
@@ -105,8 +104,7 @@ check_uninstall() {
 
 check_install() {
     local _st
-    check_status
-    _st=$?
+    if check_status; then _st=0; else _st=$?; fi
     if [[ $_st == 2 ]]; then
         yellow "未安装 sing-box，请先安装" && sleep 2
         return 1
@@ -116,8 +114,7 @@ check_install() {
 
 show_status() {
     local _st
-    check_status
-    _st=$?
+    if check_status; then _st=0; else _st=$?; fi
     case $_st in
         0)  echo -e "sing-box 状态: ${blue}已运行${plain}"; show_enable_status;;
         1)  echo -e "sing-box 状态: ${yellow}未运行${plain}"; show_enable_status;;
@@ -128,8 +125,7 @@ show_status() {
 
 show_enable_status() {
     local _en
-    check_enabled
-    _en=$?
+    if check_enabled; then _en=0; else _en=$?; fi
     if [[ $_en == 0 ]]; then
         echo -e "sing-box 自启: ${blue}是${plain}"
     else
