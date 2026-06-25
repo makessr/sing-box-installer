@@ -240,15 +240,15 @@ generate_config() {
     local uuid keypair priv_key pub_key short_id
     local hy2_port hy2_pass tuic_port tuic_pass
 
-    uuid=$(cat /proc/sys/kernel/random/uuid)
+    uuid=$($BIN_FILE generate uuid)
     keypair=$($BIN_FILE generate reality-keypair)
     priv_key=$(echo "$keypair" | sed -n 's/^PrivateKey:\s*//p')
     pub_key=$(echo "$keypair" | sed -n 's/^PublicKey:\s*//p')
-    short_id=$(openssl rand -hex 4)
+    short_id=$($BIN_FILE generate rand --hex 4)
     hy2_port=$((port + 1))
-    hy2_pass=$(openssl rand -base64 16)
+    hy2_pass=$($BIN_FILE generate rand --base64 16)
     tuic_port=$((port + 2))
-    tuic_pass=$(openssl rand -base64 16)
+    tuic_pass=$($BIN_FILE generate rand --base64 16)
 
     mkdir -p "$CONFIG_DIR"
 
@@ -256,12 +256,42 @@ generate_config() {
     openssl req -x509 -nodes -newkey rsa:2048 \
       -days 3650 -keyout "$CONFIG_DIR/hy2.key" -out "$CONFIG_DIR/hy2.crt" \
       -subj "/CN=bing.com" 2>/dev/null
-    ls -la "$CONFIG_DIR/hy2.key" "$CONFIG_DIR/hy2.crt"
+
+    # 计算证书 SHA256（HY2 客户端校验用）
+    SHA256=$(openssl x509 -in "$CONFIG_DIR/hy2.crt" -outform DER | sha256sum | awk '{print $1}')
+
+    # 下载 geoip 和 geosite 数据库（路由使用）
+    if [[ ! -f "$CONFIG_DIR/geoip.db" ]]; then
+        curl -L -o "$CONFIG_DIR/geoip.db" -# --retry 2 "https://github.com/MetaCubeX/meta-rules-dat/raw/release/geoip.db"
+    fi
+    if [[ ! -f "$CONFIG_DIR/geosite.db" ]]; then
+        curl -L -o "$CONFIG_DIR/geosite.db" -# --retry 2 "https://github.com/MetaCubeX/meta-rules-dat/raw/release/geosite.db"
+    fi
 
     cat > "$CONFIG_FILE" <<EOF
 {
   "log": {
     "level": "info"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "server": "1.1.1.1",
+        "server_port": 443,
+        "detour": "direct-out"
+      },
+      {
+        "type": "local",
+        "tag": "dns-local"
+      }
+    ],
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "dns-local"
+      }
+    ]
   },
   "inbounds": [
     {
@@ -327,19 +357,57 @@ generate_config() {
   ],
   "outbounds": [
     {
-      "type": "direct"
+      "type": "direct",
+      "tag": "direct-out"
     }
-  ]
+  ],
+  "route": {
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "geoip-cn",
+        "path": "$CONFIG_DIR/geoip.db",
+        "format": "source"
+      },
+      {
+        "type": "local",
+        "tag": "geosite-cn",
+        "path": "$CONFIG_DIR/geosite.db",
+        "format": "source"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": "geosite-cn",
+        "outbound": "direct-out"
+      },
+      {
+        "rule_set": "geoip-cn",
+        "outbound": "direct-out"
+      }
+    ],
+    "final": "direct-out"
+  }
 }
 EOF
 
     echo "验证配置文件..."
     $BIN_FILE check -c "$CONFIG_FILE"
 
+    # iptables 放行端口
+    for p in $port $hy2_port $tuic_port; do
+        iptables -C INPUT -p tcp --dport $p -j ACCEPT 2>/dev/null || iptables -A INPUT -p tcp --dport $p -j ACCEPT
+        iptables -C INPUT -p udp --dport $p -j ACCEPT 2>/dev/null || iptables -A INPUT -p udp --dport $p -j ACCEPT
+    done
+    if command -v netfilter-persistent &>/dev/null; then
+        netfilter-persistent save 2>/dev/null
+    fi
+
     CONFIG_UUID=$uuid
     CONFIG_PUBKEY=$pub_key
     CONFIG_SHORTID=$short_id
     CONFIG_PORT=$port
+    CONFIG_SHA256=$SHA256
     CONFIG_HY2_PORT=$hy2_port
     CONFIG_HY2_PASS=$hy2_pass
     CONFIG_TUIC_PORT=$tuic_port
@@ -442,9 +510,9 @@ EOF
 
     # 8. 获取 IP
     SERVER_IP=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
-    VLESS_URL="vless://${CONFIG_UUID}@${SERVER_IP}:${CONFIG_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=ios&pbk=${CONFIG_PUBKEY}&sid=${CONFIG_SHORTID}&type=tcp#Reality"
-    HY2_URL="hysteria2://${CONFIG_HY2_PASS}@${SERVER_IP}:${CONFIG_HY2_PORT}?sni=bing.com&insecure=1&alpn=h3#Hysteria2"
-    TUIC_URL="tuic://${CONFIG_UUID}:${CONFIG_TUIC_PASS}@${SERVER_IP}:${CONFIG_TUIC_PORT}?congestion_control=bbr&sni=bing.com&alpn=h3&udp_relay_mode=native#Tuic"
+    VLESS_URL="vless://${CONFIG_UUID}@${SERVER_IP}:${CONFIG_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=chrome&pbk=${CONFIG_PUBKEY}&sid=${CONFIG_SHORTID}&type=tcp&headerType=none#Reality"
+    HY2_URL="hysteria2://${CONFIG_HY2_PASS}@${SERVER_IP}:${CONFIG_HY2_PORT}?security=tls&alpn=h3&sni=bing.com&pinSHA256=${CONFIG_SHA256}#Hysteria2"
+    TUIC_URL="tuic://${CONFIG_UUID}:${CONFIG_TUIC_PASS}@${SERVER_IP}:${CONFIG_TUIC_PORT}?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=bing.com&insecure=1#Tuic"
 
     # 9. 输出（install.sh 风格）
     echo "----------------------------------------------------------------------"
@@ -464,6 +532,7 @@ EOF
     echo "  端口: $CONFIG_HY2_PORT"
     echo "  密码: $CONFIG_HY2_PASS"
     echo "  SNI: bing.com"
+    echo "  pinSHA256: $CONFIG_SHA256"
     echo "  链接:"
     green "  $HY2_URL"
     echo ""
@@ -484,6 +553,7 @@ VLESS_PUBKEY=$CONFIG_PUBKEY
 VLESS_SHORTID=$CONFIG_SHORTID
 HY2_PORT=$CONFIG_HY2_PORT
 HY2_PASS=$CONFIG_HY2_PASS
+HY2_SHA256=$CONFIG_SHA256
 TUIC_PORT=$CONFIG_TUIC_PORT
 TUIC_PASS=$CONFIG_TUIC_PASS
 SERVER_IP=$SERVER_IP
@@ -580,13 +650,14 @@ show_config() {
         local shortid=$VLESS_SHORTID
         local hy2_port=$HY2_PORT
         local hy2_pass=$HY2_PASS
+        local hy2_sha256=$HY2_SHA256
         local tuic_port=$TUIC_PORT
         local tuic_pass=$TUIC_PASS
         local server_ip=$SERVER_IP
     else
-        # 如果 info.txt 不存在，从 config.json 提取（但 PublicKey 无法获取）
+        # 如果 info.txt 不存在，从 config.json 提取
         yellow "配置信息文件不存在，从配置文件提取..."
-        local port uuid priv_key pubkey shortid hy2_port hy2_pass tuic_port tuic_pass server_ip
+        local port uuid priv_key pubkey shortid hy2_port hy2_pass hy2_sha256 tuic_port tuic_pass server_ip
 
         port=$(jq -r '.inbounds[0].listen_port // empty' "$CONFIG_FILE")
         hy2_port=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
@@ -604,18 +675,22 @@ show_config() {
             pubkey="无法获取"
         fi
 
+        # SHA256 从证书文件计算
+        if [[ -f "$CONFIG_DIR/hy2.crt" ]]; then
+            hy2_sha256=$(openssl x509 -in "$CONFIG_DIR/hy2.crt" -outform DER | sha256sum | awk '{print $1}')
+        fi
         server_ip=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
     fi
 
     # 生成链接（仅当有完整信息时）
     if [[ -n "$port" && -n "$uuid" && -n "$pubkey" && -n "$shortid" && "$pubkey" != "无法获取" ]]; then
-        local vless_url="vless://${uuid}@${server_ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=ios&pbk=${pubkey}&sid=${shortid}&type=tcp#Reality"
+        local vless_url="vless://${uuid}@${server_ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=chrome&pbk=${pubkey}&sid=${shortid}&type=tcp&headerType=none#Reality"
     fi
     if [[ -n "$hy2_port" && -n "$hy2_pass" ]]; then
-        local hy2_url="hysteria2://${hy2_pass}@${server_ip}:${hy2_port}?sni=bing.com&insecure=1&alpn=h3#Hysteria2"
+        local hy2_url="hysteria2://${hy2_pass}@${server_ip}:${hy2_port}?security=tls&alpn=h3&sni=bing.com&pinSHA256=${hy2_sha256}#Hysteria2"
     fi
     if [[ -n "$tuic_port" && -n "$tuic_pass" && -n "$uuid" ]]; then
-        local tuic_url="tuic://${uuid}:${tuic_pass}@${server_ip}:${tuic_port}?congestion_control=bbr&sni=bing.com&alpn=h3&udp_relay_mode=native#Tuic"
+        local tuic_url="tuic://${uuid}:${tuic_pass}@${server_ip}:${tuic_port}?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=bing.com&insecure=1#Tuic"
     fi
 
     echo ""
@@ -637,6 +712,7 @@ show_config() {
     echo "  端口: ${hy2_port:-未知}"
     echo "  密码: ${hy2_pass:-未知}"
     echo "  SNI: bing.com"
+    echo "  pinSHA256: ${hy2_sha256:-未知}"
     if [[ -n "$hy2_url" ]]; then
         echo "  链接:"
         green "  $hy2_url"
@@ -778,7 +854,7 @@ except Exception:
     green "PublicKey 已写入 $PUBKEY_FILE"
 
     # 重建 info.txt
-    local port uuid shortid hy2_port hy2_pass tuic_port tuic_pass server_ip
+    local port uuid shortid hy2_port hy2_pass hy2_sha256 tuic_port tuic_pass server_ip
     port=$(jq -r '.inbounds[0].listen_port' "$CONFIG_FILE")
     hy2_port=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
     uuid=$(jq -r '.inbounds[0].users[0].uuid // empty' "$CONFIG_FILE")
@@ -786,6 +862,10 @@ except Exception:
     hy2_pass=$(jq -r '.inbounds[1].users[0].password // empty' "$CONFIG_FILE")
     tuic_port=$(jq -r '.inbounds[2].listen_port // empty' "$CONFIG_FILE")
     tuic_pass=$(jq -r '.inbounds[2].users[0].password // empty' "$CONFIG_FILE")
+    # SHA256 从证书文件计算
+    if [[ -f "$CONFIG_DIR/hy2.crt" ]]; then
+        hy2_sha256=$(openssl x509 -in "$CONFIG_DIR/hy2.crt" -outform DER | sha256sum | awk '{print $1}')
+    fi
     server_ip=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
 
     cat > "$INFO_FILE" <<EOF
@@ -795,6 +875,7 @@ VLESS_PUBKEY=$pub_key
 VLESS_SHORTID=$shortid
 HY2_PORT=$hy2_port
 HY2_PASS=$hy2_pass
+HY2_SHA256=$hy2_sha256
 TUIC_PORT=$tuic_port
 TUIC_PASS=$tuic_pass
 SERVER_IP=$server_ip
