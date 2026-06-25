@@ -34,6 +34,7 @@ bash reality.sh
 | 3 | 重启 sing-box |
 | 4 | 查看运行状态 |
 | 5 | 更新 sing-box |
+| 6 | 查看配置信息 |
 | 0 | 退出 |
 
 ### 命令行模式
@@ -42,6 +43,7 @@ bash reality.sh
 bash reality.sh install          # 随机端口安装
 bash reality.sh install 12345    # 指定端口安装
 bash reality.sh status           # 查看状态
+bash reality.sh config           # 查看配置信息
 bash reality.sh restart          # 重启服务
 bash reality.sh update           # 更新二进制
 bash reality.sh uninstall        # 卸载
@@ -52,6 +54,8 @@ bash reality.sh uninstall        # 卸载
 - ✅ **幂等安装** — BBR 已启用则跳过，sing-box 已最新则跳过下载
 - ✅ **端口冲突检测** — 随机端口自动避开已占用端口
 - ✅ **旧配置自动备份** — 重装时保留 `.bak.` 后缀备份
+- ✅ **配置信息保存** — 安装时自动保存配置到 `/etc/sing-box/info.txt`
+- ✅ **查看配置信息** — 随时查看已安装的节点配置和分享链接
 - ✅ **彩色交互菜单** — LONZE.IO ASCII logo + 系统状态面板
 - ✅ **系统信息面板** — 显示 OS/内核/架构/虚拟化/BBR/IP
 - ✅ 支持 **arm64 / amd64 / armv7**
@@ -93,4 +97,6 @@ sing-box 版本: 1.13.13
 - VLESS Reality 不需要证书，直接可用
 - Hysteria2 使用内置自签证书（客户端需 `insecure=1`）
 - 首次安装后如需修改端口，重新执行 `install` 即可
+- 安装后配置信息保存在 `/etc/sing-box/info.txt`，可通过菜单或命令查看
+- 如忘记配置信息，运行 `bash reality.sh config` 或选择菜单选项 `6` 查看
 - 原 `reality.sh` 命令行参数完全兼容
