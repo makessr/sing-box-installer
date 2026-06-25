@@ -260,14 +260,6 @@ generate_config() {
     # 计算证书 SHA256（HY2 客户端校验用）
     SHA256=$(openssl x509 -in "$CONFIG_DIR/hy2.crt" -outform DER | sha256sum | awk '{print $1}')
 
-    # 下载 geoip 和 geosite 数据库（路由使用）
-    if [[ ! -f "$CONFIG_DIR/geoip.db" ]]; then
-        curl -L -o "$CONFIG_DIR/geoip.db" -# --retry 2 "https://github.com/MetaCubeX/meta-rules-dat/raw/release/geoip.db"
-    fi
-    if [[ ! -f "$CONFIG_DIR/geosite.db" ]]; then
-        curl -L -o "$CONFIG_DIR/geosite.db" -# --retry 2 "https://github.com/MetaCubeX/meta-rules-dat/raw/release/geosite.db"
-    fi
-
     cat > "$CONFIG_FILE" <<EOF
 {
   "log": {
@@ -362,27 +354,9 @@ generate_config() {
     }
   ],
   "route": {
-    "rule_set": [
-      {
-        "type": "local",
-        "tag": "geoip-cn",
-        "path": "$CONFIG_DIR/geoip.db",
-        "format": "source"
-      },
-      {
-        "type": "local",
-        "tag": "geosite-cn",
-        "path": "$CONFIG_DIR/geosite.db",
-        "format": "source"
-      }
-    ],
     "rules": [
       {
-        "rule_set": "geosite-cn",
-        "outbound": "direct-out"
-      },
-      {
-        "rule_set": "geoip-cn",
+        "geoip": "cn",
         "outbound": "direct-out"
       }
     ],
