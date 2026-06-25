@@ -20,6 +20,7 @@ readp(){ read -p "$(yellow "$1")" $2;}
 SERVICE_NAME="sing-box"
 CONFIG_DIR="/etc/sing-box"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
+INFO_FILE="${CONFIG_DIR}/info.txt"
 BIN_FILE="/usr/local/bin/sing-box"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -438,6 +439,18 @@ EOF
     green "  $HY2_URL"
     echo "----------------------------------------------------------------------"
     echo ""
+    # 10. 保存配置信息
+    cat > "$INFO_FILE" <<EOF
+VLESS_PORT=$CONFIG_PORT
+VLESS_UUID=$CONFIG_UUID
+VLESS_PUBKEY=$CONFIG_PUBKEY
+VLESS_SHORTID=$CONFIG_SHORTID
+HY2_PORT=$CONFIG_HY2_PORT
+HY2_PASS=$CONFIG_HY2_PASS
+SERVER_IP=$SERVER_IP
+EOF
+    green "配置信息已保存到: $INFO_FILE"
+
     # 刷新系统信息并显示状态
     get_sysinfo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -501,6 +514,95 @@ status_singbox() {
     echo "------------------------------------------------------------------------------------"
 }
 
+# ===================== 查看配置信息 =====================
+show_config() {
+    [[ -n "$TERM" ]] && clear
+    get_sysinfo
+    logo
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    blue "            Sing-box 配置信息"
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        red "配置文件不存在: $CONFIG_FILE"
+        return 1
+    fi
+
+    # 从 info.txt 读取保存的信息
+    if [[ -f "$INFO_FILE" ]]; then
+        source "$INFO_FILE"
+        local port=$VLESS_PORT
+        local uuid=$VLESS_UUID
+        local pubkey=$VLESS_PUBKEY
+        local shortid=$VLESS_SHORTID
+        local hy2_port=$HY2_PORT
+        local hy2_pass=$HY2_PASS
+        local server_ip=$SERVER_IP
+    else
+        # 如果 info.txt 不存在，从 config.json 提取（但 PublicKey 无法获取）
+        yellow "配置信息文件不存在，从配置文件提取..."
+        local port uuid priv_key pubkey shortid hy2_port hy2_pass server_ip
+
+        port=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" | sed -n '1p')
+        hy2_port=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" | sed -n '2p')
+        uuid=$(grep -oP '"uuid": "\K[^"]+' "$CONFIG_FILE" | head -1)
+        shortid=$(grep -oP '"short_id": \["\K[^"]+' "$CONFIG_FILE")
+        hy2_pass=$(grep -oP '"password": "\K[^"]+' "$CONFIG_FILE")
+        priv_key=$(grep -oP '"private_key": "\K[^"]+' "$CONFIG_FILE")
+
+        # PublicKey 无法从 PrivateKey 直接计算，提示用户
+        if [[ -n "$priv_key" ]]; then
+            pubkey="无法获取（建议重新安装）"
+        fi
+
+        server_ip=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
+    fi
+
+    # 生成链接（仅当有完整信息时）
+    if [[ -n "$port" && -n "$uuid" && -n "$pubkey" && -n "$shortid" && "$pubkey" != "无法获取（建议重新安装）" ]]; then
+        local vless_url="vless://${uuid}@${server_ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=ios&pbk=${pubkey}&sid=${shortid}&type=tcp#Reality"
+    fi
+    if [[ -n "$hy2_port" && -n "$hy2_pass" ]]; then
+        local hy2_url="hysteria2://${hy2_pass}@${server_ip}:${hy2_port}?sni=bing.com&insecure=1&alpn=h3#Hysteria2"
+    fi
+
+    echo ""
+    blue "VLESS Reality 节点："
+    echo "  端口: ${port:-未知}"
+    echo "  UUID: ${uuid:-未知}"
+    echo "  SNI: gateway.icloud.com"
+    echo "  PublicKey: ${pubkey:-未知}"
+    echo "  ShortId: ${shortid:-未知}"
+    if [[ -n "$vless_url" ]]; then
+        echo "  链接:"
+        green "  $vless_url"
+    else
+        yellow "  链接: 无法生成（缺少 PublicKey）"
+    fi
+
+    echo ""
+    blue "Hysteria2 节点："
+    echo "  端口: ${hy2_port:-未知}"
+    echo "  密码: ${hy2_pass:-未知}"
+    echo "  SNI: bing.com"
+    if [[ -n "$hy2_url" ]]; then
+        echo "  链接:"
+        green "  $hy2_url"
+    else
+        yellow "  链接: 无法生成（缺少必要信息）"
+    fi
+
+    echo ""
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    if [[ -f "$INFO_FILE" ]]; then
+        blue "配置信息文件: $INFO_FILE"
+    else
+        yellow "提示: 缺少配置信息文件，PublicKey 无法获取"
+        yellow "建议: 重新安装以生成完整配置信息文件"
+    fi
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+}
+
 # ===================== 更新 =====================
 update_singbox() {
     echo "检查更新..."
@@ -542,9 +644,9 @@ show_menu() {
     get_sysinfo
     logo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    echo -e "${bblue}         Sing-box 管理脚本${plain}"
+    echo -e "${bblue}Sing-box一键安装hysteria2+VLESS Reality管理脚本${plain}"
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    white "项目：github.com/SagerNet/sing-box"
+    white "项目:github.com/mar/sing-box-installer"
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     green " 1. 一键安装 sing-box"
@@ -553,6 +655,7 @@ show_menu() {
     green " 3. 重启 sing-box"
     green " 4. 查看运行状态"
     green " 5. 更新 sing-box"
+    green " 6. 查看配置信息"
     echo "----------------------------------------------------------------------------------"
     green " 0. 退出脚本"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -562,13 +665,14 @@ show_menu() {
     show_status
     echo "------------------------------------------------------------------------------------"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    readp "请输入数字【0-5】:" Input
+    readp "请输入数字【0-6】:" Input
     case "$Input" in
         1) check_uninstall && install_singbox;;
         2) check_install && uninstall_singbox;;
         3) check_install && restart_singbox;;
         4) check_install && status_singbox && back;;
         5) check_install && update_singbox;;
+        6) check_install && show_config && back;;
         *) exit;;
     esac
     show_menu
@@ -608,6 +712,9 @@ case "$1" in
         ;;
     update)
         check_install && update_singbox "$2"
+        ;;
+    config)
+        check_install && show_config
         ;;
     *)
         show_menu
