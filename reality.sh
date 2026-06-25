@@ -507,8 +507,8 @@ status_singbox() {
     blue "端口监听："
     if [[ -f "$CONFIG_FILE" ]]; then
         local rport hport
-        rport=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" 2>/dev/null | sed -n '1p')
-        hport=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" 2>/dev/null | sed -n '2p')
+        rport=$(jq -r '.inbounds[0].listen_port // empty' "$CONFIG_FILE")
+        hport=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
         echo -e "  VLESS Reality: ${blue}${rport:-未知}${plain}"
         echo -e "  Hysteria2:     ${blue}${hport:-未知}${plain}"
     else
@@ -546,14 +546,14 @@ show_config() {
         yellow "配置信息文件不存在，从配置文件提取..."
         local port uuid priv_key pubkey shortid hy2_port hy2_pass server_ip
 
-        port=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" | sed -n '1p')
-        hy2_port=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" | sed -n '2p')
-        uuid=$(grep -oP '"uuid": "\K[^"]+' "$CONFIG_FILE" | head -1)
-        shortid=$(grep -oP '"short_id": \["\K[^"]+' "$CONFIG_FILE")
-        hy2_pass=$(grep -oP '"password": "\K[^"]+' "$CONFIG_FILE")
-        priv_key=$(grep -oP '"private_key": "\K[^"]+' "$CONFIG_FILE")
+        port=$(jq -r '.inbounds[0].listen_port // empty' "$CONFIG_FILE")
+        hy2_port=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
+        uuid=$(jq -r '.inbounds[0].users[0].uuid // empty' "$CONFIG_FILE")
+        shortid=$(jq -r '.inbounds[0].tls.reality.short_id[0] // empty' "$CONFIG_FILE")
+        hy2_pass=$(jq -r '.inbounds[1].users[0].password // empty' "$CONFIG_FILE")
+        priv_key=$(jq -r '.inbounds[0].tls.reality.private_key // empty' "$CONFIG_FILE")
         # PublicKey 从 config.json 的 _pubkey 字段提取（v2+ 版本保存）
-        pubkey=$(grep -oP '"_pubkey": "\K[^"]+' "$CONFIG_FILE")
+        pubkey=$(jq -r '._pubkey // empty' "$CONFIG_FILE")
 
         # 兼容旧版本：没有 _pubkey 字段则提示重装
         if [[ -z "$pubkey" && -n "$priv_key" ]]; then
@@ -637,6 +637,107 @@ update_singbox() {
     esac
 }
 
+# ===================== 修复配置（从 PrivateKey 推导 PublicKey） =====================
+fix_config() {
+    if [[ $(id -u) -ne 0 ]]; then
+        red "请使用 root 运行"
+        return 1
+    fi
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        red "配置文件不存在，无法修复"
+        return 1
+    fi
+
+    # 检查是否已有 _pubkey 且 info.txt 完整
+    local existing_pubkey
+    existing_pubkey=$(jq -r '._pubkey // empty' "$CONFIG_FILE" 2>/dev/null)
+    if [[ -n "$existing_pubkey" && -s "$INFO_FILE" && $(grep -c '^VLESS_SHORTID=' "$INFO_FILE" 2>/dev/null) -gt 0 && -n $(grep '^VLESS_SHORTID=' "$INFO_FILE" 2>/dev/null | cut -d= -f2) ]]; then
+        green "配置信息完整，无需修复"
+        return 0
+    fi
+
+    green "修复配置信息..."
+
+    # 从 config.json 提取 PrivateKey（如果没有 _pubkey 或 info.txt 不完整时也需要）
+    local priv_key
+    priv_key=$(jq -r '.inbounds[0].tls.reality.private_key // empty' "$CONFIG_FILE")
+    if [[ -z "$priv_key" ]]; then
+        red "配置文件中未找到 PrivateKey，无法修复"
+        return 1
+    fi
+
+    yellow "从 PrivateKey 推导 PublicKey..."
+    # 用 Python cryptography 库推导 X25519 公钥
+    if ! command -v python3 &>/dev/null; then
+        red "需要 python3 来推导 PublicKey，请安装 python3"
+        return 1
+    fi
+
+    # 确保 cryptography 可用
+    python3 -c "from cryptography.hazmat.primitives.asymmetric import x25519" 2>/dev/null || \
+        apt install python3-cryptography -y 2>/dev/null || {
+        red "无法安装 python3-cryptography，请手动安装后重试"
+        return 1
+    }
+
+    local pub_key
+    pub_key=$(python3 -c "
+import base64, sys
+from cryptography.hazmat.primitives.asymmetric import x25519
+from cryptography.hazmat.primitives import serialization
+
+priv_b64url = '$priv_key'.strip()
+# URL-safe base64 → 标准 base64（自动补 padding）
+missing = len(priv_b64url) % 4
+if missing:
+    priv_b64url += '=' * (4 - missing)
+try:
+    priv_bytes = base64.urlsafe_b64decode(priv_b64url)
+    if len(priv_bytes) != 32:
+        sys.exit(1)
+    priv = x25519.X25519PrivateKey.from_private_bytes(priv_bytes)
+    pub = priv.public_key()
+    pub_bytes = pub.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    )
+    pub_b64 = base64.b64encode(pub_bytes).decode()
+    print(pub_b64)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null) || {
+        red "PublicKey 推导失败"
+        return 1
+    }
+
+    # 写入 config.json（jq 必须有）
+    if ! command -v jq &>/dev/null; then
+        apt install jq -y 2>/dev/null
+    fi
+    jq --arg pk "$pub_key" '._pubkey = $pk' "$CONFIG_FILE" > /tmp/config.json && mv /tmp/config.json "$CONFIG_FILE"
+    green "PublicKey 已写入 config.json"
+
+    # 重建 info.txt
+    local port uuid shortid hy2_port hy2_pass server_ip
+    port=$(jq -r '.inbounds[0].listen_port' "$CONFIG_FILE")
+    hy2_port=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
+    uuid=$(jq -r '.inbounds[0].users[0].uuid // empty' "$CONFIG_FILE")
+    shortid=$(jq -r '.inbounds[0].tls.reality.short_id[0] // empty' "$CONFIG_FILE")
+    hy2_pass=$(jq -r '.inbounds[1].users[0].password // empty' "$CONFIG_FILE")
+    server_ip=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
+
+    cat > "$INFO_FILE" <<EOF
+VLESS_PORT=$port
+VLESS_UUID=$uuid
+VLESS_PUBKEY=$pub_key
+VLESS_SHORTID=$shortid
+HY2_PORT=$hy2_port
+HY2_PASS=$hy2_pass
+SERVER_IP=$server_ip
+EOF
+    green "配置信息已保存到: $INFO_FILE"
+}
+
 # ===================== 菜单 =====================
 logo() {
     echo -e "${bblue} __    ____  _   _______   ______  ________ ${plain}"
@@ -663,6 +764,7 @@ show_menu() {
     green " 4. 查看运行状态"
     green " 5. 更新 sing-box"
     green " 6. 查看配置信息"
+    green " 7. 修复配置信息（旧版本升级后补全 PublicKey）"
     echo "----------------------------------------------------------------------------------"
     green " 0. 退出脚本"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -672,7 +774,7 @@ show_menu() {
     show_status
     echo "------------------------------------------------------------------------------------"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    readp "请输入数字【0-6】:" Input
+    readp "请输入数字【0-7】:" Input
     case "$Input" in
         1) check_uninstall && install_singbox;;
         2) check_install && uninstall_singbox;;
@@ -680,6 +782,7 @@ show_menu() {
         4) check_install && status_singbox && back;;
         5) check_install && update_singbox;;
         6) check_install && show_config && back;;
+        7) check_install && fix_config && show_config && back;;
         *) exit;;
     esac
     show_menu
@@ -722,6 +825,9 @@ case "$1" in
         ;;
     config)
         check_install && show_config
+        ;;
+    fix)
+        check_install && fix_config && show_config
         ;;
     *)
         show_menu
