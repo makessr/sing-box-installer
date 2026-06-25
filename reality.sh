@@ -555,16 +555,16 @@ show_config() {
         # PublicKey 从 config.json 的 _pubkey 字段提取（v2+ 版本保存）
         pubkey=$(jq -r '._pubkey // empty' "$CONFIG_FILE")
 
-        # 兼容旧版本：没有 _pubkey 字段则提示重装
+        # 兼容旧版本：没有 _pubkey 字段则标记
         if [[ -z "$pubkey" && -n "$priv_key" ]]; then
-            pubkey="无法获取（建议重新安装）"
+            pubkey="无法获取"
         fi
 
         server_ip=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
     fi
 
     # 生成链接（仅当有完整信息时）
-    if [[ -n "$port" && -n "$uuid" && -n "$pubkey" && -n "$shortid" && "$pubkey" != "无法获取（建议重新安装）" ]]; then
+    if [[ -n "$port" && -n "$uuid" && -n "$pubkey" && -n "$shortid" && "$pubkey" != "无法获取" ]]; then
         local vless_url="vless://${uuid}@${server_ip}:${port}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=ios&pbk=${pubkey}&sid=${shortid}&type=tcp#Reality"
     fi
     if [[ -n "$hy2_port" && -n "$hy2_pass" ]]; then
@@ -601,7 +601,7 @@ show_config() {
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     if [[ -f "$INFO_FILE" ]]; then
         blue "配置信息文件: $INFO_FILE"
-    elif [[ -n "$pubkey" && "$pubkey" != "无法获取（建议重新安装）" ]]; then
+    elif [[ -n "$pubkey" && "$pubkey" != "无法获取" ]]; then
         blue "配置信息: 从 config.json 提取（部分字段）"
     else
         yellow "提示: 缺少配置信息文件，PublicKey 无法获取"
@@ -763,8 +763,7 @@ show_menu() {
     green " 3. 重启 sing-box"
     green " 4. 查看运行状态"
     green " 5. 更新 sing-box"
-    green " 6. 查看配置信息"
-    green " 7. 修复配置信息（旧版本升级后补全 PublicKey）"
+    green " 6. 查看配置信息（缺少时自动修复）"
     echo "----------------------------------------------------------------------------------"
     green " 0. 退出脚本"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -774,15 +773,14 @@ show_menu() {
     show_status
     echo "------------------------------------------------------------------------------------"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    readp "请输入数字【0-7】:" Input
+    readp "请输入数字【0-6】:" Input
     case "$Input" in
         1) check_uninstall && install_singbox;;
         2) check_install && uninstall_singbox;;
         3) check_install && restart_singbox;;
         4) check_install && status_singbox && back;;
         5) check_install && update_singbox;;
-        6) check_install && show_config && back;;
-        7) check_install && fix_config && show_config && back;;
+        6) check_install && fix_config && show_config && back;;
         *) exit;;
     esac
     show_menu
@@ -824,7 +822,7 @@ case "$1" in
         check_install && update_singbox "$2"
         ;;
     config)
-        check_install && show_config
+        check_install && fix_config && show_config
         ;;
     fix)
         check_install && fix_config && show_config

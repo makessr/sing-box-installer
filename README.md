@@ -30,8 +30,7 @@ bash reality.sh
 | 3 | 重启 sing-box |
 | 4 | 查看运行状态 |
 | 5 | 更新 sing-box |
-| 6 | 查看配置信息（节点链接、密钥） |
-| 7 | 修复配置信息（旧版升级后补全 PublicKey） |
+| 6 | 查看配置信息（缺失时自动修复 PublicKey） |
 | 0 | 退出 |
 
 ### 命令行模式
@@ -51,7 +50,7 @@ bash reality.sh uninstall          # 卸载
 
 1. **安装** → 自动：启用 BBR → 下载 sing-box → 生成 VLESS Reality + Hysteria2 配置 → 启动服务
 2. **日常** → 菜单中查看状态、重启、更新
-3. **配置丢失** → 选 `6` 查看，如 PublicKey 缺失则选 `7` 修复（从 PrivateKey 自动推导）
+3. **配置丢失** → 选 `6` 查看，PublicKey 或 info.txt 缺失时自动修复
 
 ## 功能特性
 
@@ -106,7 +105,7 @@ sing-box 版本: 1.13.13
 ## 常见问题
 
 **Q: PublicKey 显示"无法获取"？**
-A: 运行 `bash reality.sh fix` 或菜单选 `7`，脚本会自动从 PrivateKey 推导并写入。
+A: 选菜单 `6` 查看配置时会自动修复，或运行 `bash reality.sh fix` 手动修复。
 
 **Q: `info.txt` 误删了？**
 A: 同样运行 `bash reality.sh fix`，会自动重建。
