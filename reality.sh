@@ -21,6 +21,7 @@ SERVICE_NAME="sing-box"
 CONFIG_DIR="/etc/sing-box"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 INFO_FILE="${CONFIG_DIR}/info.txt"
+PUBKEY_FILE="${CONFIG_DIR}/.pubkey"
 BIN_FILE="/usr/local/bin/sing-box"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
@@ -332,9 +333,6 @@ generate_config() {
 }
 EOF
 
-    # 在 config.json 中嵌入 PublicKey（sing-box 忽略未知字段）
-    jq --arg pk "$pub_key" '._pubkey = $pk' "$CONFIG_FILE" > /tmp/config.json && mv /tmp/config.json "$CONFIG_FILE"
-
     echo "验证配置文件..."
     $BIN_FILE check -c "$CONFIG_FILE"
 
@@ -491,6 +489,8 @@ TUIC_PASS=$CONFIG_TUIC_PASS
 SERVER_IP=$SERVER_IP
 EOF
     green "配置信息已保存到: $INFO_FILE"
+    echo "$pub_key" > "$PUBKEY_FILE"
+    green "PublicKey 已保存到: $PUBKEY_FILE"
 
     # 刷新系统信息并显示状态
     get_sysinfo
@@ -596,10 +596,10 @@ show_config() {
         tuic_port=$(jq -r '.inbounds[2].listen_port // empty' "$CONFIG_FILE")
         tuic_pass=$(jq -r '.inbounds[2].users[0].password // empty' "$CONFIG_FILE")
         priv_key=$(jq -r '.inbounds[0].tls.reality.private_key // empty' "$CONFIG_FILE")
-        # PublicKey 从 config.json 的 _pubkey 字段提取（v2+ 版本保存）
-        pubkey=$(jq -r '._pubkey // empty' "$CONFIG_FILE")
+        # PublicKey 从 .pubkey 文件提取（备份）
+        pubkey=$(cat "$PUBKEY_FILE" 2>/dev/null || echo "")
 
-        # 兼容旧版本：没有 _pubkey 字段则标记
+        # 兼容旧版本：没有 pubkey 文件则标记
         if [[ -z "$pubkey" && -n "$priv_key" ]]; then
             pubkey="无法获取"
         fi
@@ -662,7 +662,7 @@ show_config() {
     if [[ -f "$INFO_FILE" ]]; then
         blue "配置信息文件: $INFO_FILE"
     elif [[ -n "$pubkey" && "$pubkey" != "无法获取" ]]; then
-        blue "配置信息: 从 config.json 提取（部分字段）"
+        blue "配置信息: 从配置文件提取（部分字段）"
     else
         yellow "提示: 缺少配置信息文件，PublicKey 无法获取"
         yellow "建议: 重新安装以生成完整配置信息文件"
@@ -708,9 +708,9 @@ fix_config() {
         return 1
     fi
 
-    # 检查是否已有 _pubkey 且 info.txt 完整
+    # 检查是否已有 pubkey 且 info.txt 完整
     local existing_pubkey
-    existing_pubkey=$(jq -r '._pubkey // empty' "$CONFIG_FILE" 2>/dev/null)
+    existing_pubkey=$(cat "$PUBKEY_FILE" 2>/dev/null || echo "")
     if [[ -n "$existing_pubkey" && -s "$INFO_FILE" && $(grep -c '^VLESS_SHORTID=' "$INFO_FILE" 2>/dev/null) -gt 0 && -n $(grep '^VLESS_SHORTID=' "$INFO_FILE" 2>/dev/null | cut -d= -f2) ]]; then
         green "配置信息完整，无需修复"
         return 0
@@ -718,7 +718,7 @@ fix_config() {
 
     green "修复配置信息..."
 
-    # 从 config.json 提取 PrivateKey（如果没有 _pubkey 或 info.txt 不完整时也需要）
+    # 从 config.json 提取 PrivateKey（如果没有 pubkey 文件或 info.txt 不完整时也需要）
     local priv_key
     priv_key=$(jq -r '.inbounds[0].tls.reality.private_key // empty' "$CONFIG_FILE")
     if [[ -z "$priv_key" ]]; then
@@ -774,8 +774,8 @@ except Exception:
     if ! command -v jq &>/dev/null; then
         apt install jq -y 2>/dev/null
     fi
-    jq --arg pk "$pub_key" '._pubkey = $pk' "$CONFIG_FILE" > /tmp/config.json && mv /tmp/config.json "$CONFIG_FILE"
-    green "PublicKey 已写入 config.json"
+    echo "$pub_key" > "$PUBKEY_FILE"
+    green "PublicKey 已写入 $PUBKEY_FILE"
 
     # 重建 info.txt
     local port uuid shortid hy2_port hy2_pass tuic_port tuic_pass server_ip
