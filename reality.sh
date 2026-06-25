@@ -1,34 +1,151 @@
 #!/bin/bash
 set -e
 
+# ===================== 颜色定义（install.sh 风格） =====================
+sred='\033[5;31m'
+red='\033[0;31m'
+green='\033[0;32m'
+yellow='\033[0;33m'
+blue='\033[0;36m'
+bblue='\033[0;34m'
+plain='\033[0m'
+red(){ echo -e "\033[31m\033[01m$1\033[0m";}
+green(){ echo -e "\033[32m\033[01m$1\033[0m";}
+yellow(){ echo -e "\033[33m\033[01m$1\033[0m";}
+blue(){ echo -e "\033[36m\033[01m$1\033[0m";}
+white(){ echo -e "\033[37m\033[01m$1\033[0m";}
+readp(){ read -p "$(yellow "$1")" $2;}
+
+# ===================== 常量 =====================
 SERVICE_NAME="sing-box"
 CONFIG_DIR="/etc/sing-box"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 BIN_FILE="/usr/local/bin/sing-box"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-# 颜色
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
+# ===================== 系统信息检测 =====================
+get_sysinfo(){
+    if [[ -f /etc/redhat-release ]]; then
+        release="Centos"
+    elif cat /etc/issue | grep -q -E -i "debian"; then
+        release="Debian"
+    elif cat /etc/issue | grep -q -E -i "ubuntu"; then
+        release="Ubuntu"
+    elif cat /etc/issue | grep -q -E -i "centos|red hat|redhat"; then
+        release="Centos"
+    elif cat /proc/version | grep -q -E -i "debian"; then
+        release="Debian"
+    elif cat /proc/version | grep -q -E -i "ubuntu"; then
+        release="Ubuntu"
+    elif cat /proc/version | grep -q -E -i "centos|red hat|redhat"; then
+        release="Centos"
+    else
+        red "不支持当前系统，仅支持 Ubuntu/Debian/CentOS" && exit 1
+    fi
+    version=$(uname -r | cut -d "-" -f1)
+    case $(uname -m) in
+        aarch64) cpu=arm64;;
+        x86_64)  cpu=amd64;;
+        armv7l)  cpu=armv7;;
+        *)       red "不支持 $(uname -m) 架构" && exit 1;;
+    esac
+    [[ -z $(systemd-detect-virt 2>/dev/null) ]] && vi=$(virt-what 2>/dev/null) || vi=$(systemd-detect-virt 2>/dev/null)
+    if [[ -n $(sysctl net.ipv4.tcp_congestion_control 2>/dev/null | awk -F ' ' '{print $3}') ]]; then
+        bbr_val=$(sysctl net.ipv4.tcp_congestion_control | awk -F ' ' '{print $3}')
+    else
+        bbr_val="未启用"
+    fi
+    v4=$(curl -s4m5 icanhazip.com -k 2>/dev/null)
+    v6=$(curl -s6m5 icanhazip.com -k 2>/dev/null)
+    if [[ -z $v4 ]]; then
+        vps_ipv4='无IPV4'
+        vps_ipv6="$v6"
+    elif [[ -n $v4 && -n $v6 ]]; then
+        vps_ipv4="$v4"
+        vps_ipv6="$v6"
+    else
+        vps_ipv4="$v4"
+        vps_ipv6='无IPV6'
+    fi
+}
 
-ok()   { echo -e "  ${GREEN}✅${NC} $1"; }
-warn() { echo -e "  ${YELLOW}⚠️${NC} $1"; }
-fail() { echo -e "  ${RED}❌${NC} $1"; }
+# ===================== 状态检测（install.sh 风格） =====================
+check_status() {
+    if [[ ! -f "$SERVICE_FILE" ]]; then
+        return 2
+    fi
+    temp=$(systemctl is-active sing-box 2>/dev/null | grep -w active)
+    if [[ x"${temp}" == x"active" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 
-#################################
-# BBR — 启用检测
-#################################
+check_enabled() {
+    temp=$(systemctl is-enabled sing-box 2>/dev/null)
+    if [[ x"${temp}" == x"enabled" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+check_uninstall() {
+    check_status
+    if [[ $? != 2 ]]; then
+        yellow "sing-box 已安装，可先卸载再安装" && sleep 2
+        return 1
+    fi
+    return 0
+}
+
+check_install() {
+    check_status
+    if [[ $? == 2 ]]; then
+        yellow "未安装 sing-box，请先安装" && sleep 2
+        return 1
+    fi
+    return 0
+}
+
+show_status() {
+    check_status
+    case $? in
+        0)  echo -e "sing-box 状态: ${blue}已运行${plain}"; show_enable_status;;
+        1)  echo -e "sing-box 状态: ${yellow}未运行${plain}"; show_enable_status;;
+        2)  echo -e "sing-box 状态: ${red}未安装${plain}";;
+    esac
+    show_bin_status
+}
+
+show_enable_status() {
+    check_enabled
+    if [[ $? == 0 ]]; then
+        echo -e "sing-box 自启: ${blue}是${plain}"
+    else
+        echo -e "sing-box 自启: ${red}否${plain}"
+    fi
+}
+
+show_bin_status() {
+    if [[ -f "$BIN_FILE" ]]; then
+        local ver
+        ver=$("$BIN_FILE" version 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo "未知")
+        echo -e "sing-box 版本: ${blue}${ver}${plain}"
+    else
+        echo -e "sing-box 版本: ${red}未安装${plain}"
+    fi
+}
+
+# ===================== BBR — 幂等检测 =====================
 enable_bbr() {
     CUR_CC=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "")
     if [ "$CUR_CC" = "bbr" ]; then
-        ok "BBR 已启用，跳过"
+        green "BBR 已启用，跳过"
         return
     fi
-
     echo "启用 BBR 拥塞控制..."
-
     modprobe tcp_bbr 2>/dev/null || true
     echo "tcp_bbr" > /etc/modules-load.d/bbr.conf
     cat > /etc/sysctl.d/99-bbr.conf <<'EOF'
@@ -36,18 +153,15 @@ net.core.default_qdisc=fq
 net.ipv4.tcp_congestion_control=bbr
 EOF
     sysctl --system >/dev/null || true
-
     CUR_CC=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "")
     if [ "$CUR_CC" = "bbr" ]; then
-        ok "BBR 已启用"
+        green "BBR 已启用"
     else
-        warn "BBR 启用失败（当前: $CUR_CC）"
+        yellow "BBR 启用失败（当前: $CUR_CC）"
     fi
 }
 
-#################################
-# 获取最新版本号（缓存）
-#################################
+# ===================== sing-box 版本检测（幂等） =====================
 get_latest_version() {
     if [ -n "$_CACHED_VERSION" ]; then
         echo "$_CACHED_VERSION"
@@ -57,26 +171,20 @@ get_latest_version() {
     echo "$_CACHED_VERSION"
 }
 
-#################################
-# 检测 sing-box 是否已安装且最新
-#################################
 check_installed() {
     if [ ! -f "$BIN_FILE" ]; then
         echo "not_installed"
         return
     fi
-
     local current
     current=$("$BIN_FILE" version 2>/dev/null | head -1 | grep -oP '[\d]+\.[\d]+\.[\d]+' | head -1 || echo "")
     if [ -z "$current" ]; then
         echo "unknown"
         return
     fi
-
     local latest_tag
     latest_tag=$(get_latest_version)
     local latest="${latest_tag#v}"
-
     if [ "$current" = "$latest" ]; then
         echo "latest"
     else
@@ -84,57 +192,46 @@ check_installed() {
     fi
 }
 
-#################################
-# 下载并安装 sing-box
-#################################
+# ===================== 下载 sing-box =====================
 download_singbox() {
     local version_tag=$1
     local version=${version_tag#v}
-
     case "$(uname -m)" in
-        x86_64) SB_ARCH="amd64" ;;
-        aarch64) SB_ARCH="arm64" ;;
-        armv7l) SB_ARCH="armv7" ;;
-        *) fail "不支持的架构 $(uname -m)"; exit 1 ;;
+        x86_64)  SB_ARCH="amd64";;
+        aarch64) SB_ARCH="arm64";;
+        armv7l)  SB_ARCH="armv7";;
+        *)       red "不支持的架构 $(uname -m)"; exit 1;;
     esac
-
     local url="https://github.com/SagerNet/sing-box/releases/download/${version_tag}/sing-box-${version}-linux-${SB_ARCH}.tar.gz"
-    echo "下载 sing-box: $url"
-
-    curl -L -o /tmp/singbox.tar.gz "$url"
+    green "下载 sing-box: $url"
+    curl -L -o /tmp/singbox.tar.gz "$url" 2>&1 | tail -1
     mkdir -p /tmp/singbox
     tar -xzf /tmp/singbox.tar.gz -C /tmp/singbox
-
     local src
     src=$(find /tmp/singbox -type f -name sing-box | head -n1)
     mv "$src" "$BIN_FILE"
     chmod +x "$BIN_FILE"
     rm -rf /tmp/singbox*
-
-    ok "sing-box $version 已安装"
+    green "sing-box $version 已安装"
 }
 
-#################################
-# 检查端口占用
-#################################
+# ===================== 端口检测 =====================
 check_port() {
     local port=$1
     if ss -tlnp "sport = :$port" 2>/dev/null | grep -q .; then
         local prog
         prog=$(ss -tlnp "sport = :$port" 2>/dev/null | grep -oP 'users:\(\("\K[^"]+' || echo "未知")
-        warn "端口 $port 已被 $prog 占用"
+        yellow "端口 $port 已被 $prog 占用"
         return 1
     fi
     return 0
 }
 
-#################################
-# 生成配置
-#################################
+# ===================== 生成配置 =====================
 generate_config() {
     local port=$1
     local uuid keypair priv_key pub_key short_id
-    local hy2_port hy2_pass hy2_sni
+    local hy2_port hy2_pass
 
     uuid=$(cat /proc/sys/kernel/random/uuid)
     keypair=$($BIN_FILE generate reality-keypair)
@@ -149,7 +246,7 @@ generate_config() {
     # 自签证书
     openssl req -x509 -nodes -newkey rsa:2048 \
       -days 3650 -keyout "$CONFIG_DIR/hy2.key" -out "$CONFIG_DIR/hy2.crt" \
-      -subj "/CN=bing.com"
+      -subj "/CN=bing.com" 2>/dev/null
     ls -la "$CONFIG_DIR/hy2.key" "$CONFIG_DIR/hy2.crt"
 
     cat > "$CONFIG_FILE" <<EOF
@@ -212,7 +309,6 @@ EOF
     echo "验证配置文件..."
     $BIN_FILE check -c "$CONFIG_FILE"
 
-    # 输出变量供上层用
     CONFIG_UUID=$uuid
     CONFIG_PUBKEY=$pub_key
     CONFIG_SHORTID=$short_id
@@ -221,38 +317,37 @@ EOF
     CONFIG_HY2_PASS=$hy2_pass
 }
 
-#################################
-# 安装入口
-#################################
+# ===================== 安装入口 =====================
 install_singbox() {
     if [ "$(id -u)" -ne 0 ]; then
-        fail "请使用 root 运行"
+        red "请使用 root 运行"
         exit 1
     fi
 
-    echo ""
-    echo "=============================="
-    echo " Sing-box 一键安装"
-    echo "=============================="
+    clear
+    logo
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    blue "            Sing-box 一键安装脚本"
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
 
     # 1. BBR
     enable_bbr
 
     # 2. 依赖
-    apt update -y && apt install -y curl unzip jq openssl tar
+    apt update -y && apt install -y curl unzip jq openssl tar virt-what
 
-    # 3. 检测 sing-box 状态
+    # 3. 检测 sing-box 状态（幂等）
     local status
     status=$(check_installed)
     case "$status" in
         latest)
-            ok "sing-box 已是最新版，跳过下载"
+            green "sing-box 已是最新版，跳过下载"
             ;;
         outdated:*)
             local cur="${status#outdated:}"
             local old_ver="${cur%:*}"
             local new_ver="${cur#*:}"
-            warn "sing-box $old_ver → $new_ver"
+            yellow "sing-box $old_ver → $new_ver"
             download_singbox "$(get_latest_version)"
             ;;
         not_installed)
@@ -260,7 +355,7 @@ install_singbox() {
             download_singbox "$(get_latest_version)"
             ;;
         unknown)
-            warn "无法检测版本，重新下载..."
+            yellow "无法检测版本，重新下载..."
             download_singbox "$(get_latest_version)"
             ;;
     esac
@@ -269,21 +364,20 @@ install_singbox() {
     local PORT
     if [ -n "$1" ] && [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; then
         PORT="$1"
-        echo "使用指定端口: $PORT"
+        blue "使用指定端口: $PORT"
     else
-        # 随机找一个未被占用的端口
         while :; do
             PORT=$((RANDOM % 20001 + 30000))
             check_port "$PORT" && check_port $((PORT + 1)) && break
         done
-        echo "使用随机端口: $PORT"
+        blue "使用随机端口: $PORT"
     fi
 
     # 5. 备份旧配置
     if [ -f "$CONFIG_FILE" ]; then
         local bak="${CONFIG_FILE}.bak.$(date +%Y%m%d_%H%M%S)"
         cp "$CONFIG_FILE" "$bak"
-        ok "旧配置已备份: $bak"
+        green "旧配置已备份: $bak"
     fi
 
     # 6. 生成配置
@@ -310,42 +404,57 @@ EOF
 
     sleep 2
     if systemctl is-active --quiet sing-box; then
-        ok "Sing-box 服务运行中"
+        green "Sing-box 服务运行中"
     else
-        fail "服务启动失败，日志如下："
+        red "服务启动失败，日志如下："
         journalctl -u sing-box -n 20 --no-pager
         exit 1
     fi
 
-    # 8. 输出连接信息
+    # 8. 获取 IP
     SERVER_IP=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
     VLESS_URL="vless://${CONFIG_UUID}@${SERVER_IP}:${CONFIG_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=ios&pbk=${CONFIG_PUBKEY}&sid=${CONFIG_SHORTID}&type=tcp#Reality"
     HY2_URL="hysteria2://${CONFIG_HY2_PASS}@${SERVER_IP}:${CONFIG_HY2_PORT}?sni=bing.com&insecure=1&alpn=h3#Hysteria2"
 
+    # 9. 输出（install.sh 风格）
+    echo "----------------------------------------------------------------------"
+    green "Sing-box 安装成功"
+    echo "----------------------------------------------------------------------"
     echo ""
-    echo "=============================="
-    echo " ✅ 安装完成"
-    echo "=============================="
-    echo ""
-    echo "VLESS Reality:"
+    blue "VLESS Reality 节点："
     echo "  端口: $CONFIG_PORT"
+    echo "  UUID: $CONFIG_UUID"
     echo "  SNI: gateway.icloud.com"
+    echo "  PublicKey: $CONFIG_PUBKEY"
+    echo "  ShortId: $CONFIG_SHORTID"
     echo "  链接:"
-    echo "  $VLESS_URL"
+    green "  $VLESS_URL"
     echo ""
-    echo "Hysteria2:"
+    blue "Hysteria2 节点："
     echo "  端口: $CONFIG_HY2_PORT"
-    echo "  SNI: bing.com"
     echo "  密码: $CONFIG_HY2_PASS"
+    echo "  SNI: bing.com"
     echo "  链接:"
-    echo "  $HY2_URL"
-    echo "=============================="
+    green "  $HY2_URL"
+    echo "----------------------------------------------------------------------"
+    echo ""
+    # 刷新系统信息并显示状态
+    get_sysinfo
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    echo -e "系统:${blue}$release${plain}  内核:${blue}$version${plain}  处理器:${blue}$cpu${plain}  虚拟化:${blue}$vi${plain}  BBR算法:${blue}$bbr_val${plain}"
+    echo -e "本地IPV4地址：${blue}$vps_ipv4${plain}  本地IPV6地址：${blue}$vps_ipv6${plain}"
+    echo "------------------------------------------------------------------------------------"
+    show_status
+    echo "------------------------------------------------------------------------------------"
+    echo ""
+    green "脚本快捷使用方式：bash reality.sh"
+    echo ""
 }
 
-#################################
-# 卸载
-#################################
+# ===================== 卸载 =====================
 uninstall_singbox() {
+    yellow "是否卸载 sing-box？（回车确认，Ctrl+C 取消）"
+    readp "" confirm
     echo "卸载 sing-box..."
     systemctl stop sing-box 2>/dev/null || true
     systemctl disable sing-box 2>/dev/null || true
@@ -353,49 +462,57 @@ uninstall_singbox() {
     rm -rf "$CONFIG_DIR"
     rm -f "$BIN_FILE"
     systemctl daemon-reload
-    ok "卸载完成"
+    green "卸载完成"
 }
 
-#################################
-# 重启
-#################################
+# ===================== 重启 =====================
 restart_singbox() {
     systemctl restart sing-box
-    systemctl status sing-box --no-pager
-}
-
-#################################
-# 状态
-#################################
-status_singbox() {
-    echo "=== 服务状态 ==="
-    systemctl status sing-box --no-pager 2>&1
-    echo ""
-    echo "=== 端口监听 ==="
-    ss -tlnp | grep sing-box || warn "未找到 sing-box 监听端口"
-    echo ""
-    echo "=== 版本 ==="
-    if [ -f "$BIN_FILE" ]; then
-        $BIN_FILE version 2>/dev/null | head -2
+    sleep 2
+    if systemctl is-active --quiet sing-box; then
+        green "Sing-box 重启成功"
     else
-        warn "sing-box 未安装"
+        red "重启失败，查看日志："
+        journalctl -u sing-box -n 20 --no-pager
     fi
 }
 
-#################################
-# 更新（仅重下二进制+重启）
-#################################
+# ===================== 状态显示（install.sh 风格） =====================
+status_singbox() {
+    clear
+    get_sysinfo
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    echo -e "系统:${blue}$release${plain}  内核:${blue}$version${plain}  处理器:${blue}$cpu${plain}  虚拟化:${blue}$vi${plain}  BBR算法:${blue}$bbr_val${plain}"
+    echo -e "本地IPV4地址：${blue}$vps_ipv4${plain}  本地IPV6地址：${blue}$vps_ipv6${plain}"
+    echo "------------------------------------------------------------------------------------"
+    show_status
+    echo "------------------------------------------------------------------------------------"
+    echo ""
+    blue "端口监听："
+    if [[ -f "$CONFIG_FILE" ]]; then
+        local rport hport
+        rport=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" 2>/dev/null | sed -n '1p')
+        hport=$(grep -oP '"listen_port": \K\d+' "$CONFIG_FILE" 2>/dev/null | sed -n '2p')
+        echo -e "  VLESS Reality: ${blue}${rport:-未知}${plain}"
+        echo -e "  Hysteria2:     ${blue}${hport:-未知}${plain}"
+    else
+        echo -e "  无配置文件"
+    fi
+    echo "------------------------------------------------------------------------------------"
+}
+
+# ===================== 更新 =====================
 update_singbox() {
     echo "检查更新..."
     local status
     status=$(check_installed)
     case "$status" in
         latest)
-            ok "已是最新版"
+            green "已是最新版"
             return
             ;;
         not_installed)
-            warn "sing-box 未安装，执行安装..."
+            yellow "sing-box 未安装，执行安装..."
             install_singbox "$1"
             return
             ;;
@@ -406,14 +523,76 @@ update_singbox() {
             echo "发现新版: $old_ver → $new_ver"
             download_singbox "$(get_latest_version)"
             systemctl restart sing-box
-            ok "更新完成"
+            green "更新完成"
             ;;
     esac
 }
 
-#################################
-# 命令分发
-#################################
+# ===================== 菜单（install.sh 风格） =====================
+logo() {
+    echo -e "${bblue} __    ____  _   _______   ______  ________ ${plain}"
+    echo -e "${bblue}/ /   / __ \/ | / /__  /  / ____/ /  _/ __ \ ${plain}"
+    echo -e "${bblue}/ /   / / / /  |/ /  / /  / __/    / // / / / ${plain}"
+    echo -e "${bblue}/ /___/ /_/ / /|  /  / /__/ /____ _/ // /_/ / ${plain}"
+    echo -e "${bblue}\____/\____/_/ |_/  /____/_____(_)___/\____/  ${plain}"
+}
+
+show_menu() {
+    clear
+    get_sysinfo
+    logo
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    echo -e "${bblue}         Sing-box 管理脚本${plain}"
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    white "项目：github.com/SagerNet/sing-box"
+    white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    green " 1. 一键安装 sing-box"
+    green " 2. 卸载 sing-box"
+    echo "----------------------------------------------------------------------------------"
+    green " 3. 重启 sing-box"
+    green " 4. 查看运行状态"
+    green " 5. 更新 sing-box"
+    echo "----------------------------------------------------------------------------------"
+    green " 0. 退出脚本"
+    red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    echo -e "系统:${blue}$release${plain}  内核:${blue}$version${plain}  处理器:${blue}$cpu${plain}  虚拟化:${blue}$vi${plain}  BBR算法:${blue}$bbr_val${plain}"
+    echo -e "本地IPV4地址：${blue}$vps_ipv4${plain}  本地IPV6地址：${blue}$vps_ipv6${plain}"
+    echo "------------------------------------------------------------------------------------"
+    show_status
+    echo "------------------------------------------------------------------------------------"
+    red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    readp "请输入数字【0-5】:" Input
+    case "$Input" in
+        1) check_uninstall && install_singbox;;
+        2) check_install && uninstall_singbox;;
+        3) check_install && restart_singbox;;
+        4) check_install && status_singbox && back;;
+        5) check_install && update_singbox;;
+        *) exit;;
+    esac
+    show_menu
+}
+
+# ===================== 返回菜单 =====================
+back() {
+    white "------------------------------------------------------------------------------------"
+    white " 回主菜单，请按任意键"
+    white " 退出脚本，请按Ctrl+C"
+    get_char && show_menu
+}
+
+get_char() {
+    SAVEDSTTY=$(stty -g)
+    stty -echo
+    stty cbreak
+    dd if=/dev/tty bs=1 count=1 2>/dev/null
+    stty -raw
+    stty echo
+    stty $SAVEDSTTY
+}
+
+# ===================== 命令分发 =====================
 case "$1" in
     install)
         install_singbox "$2"
@@ -422,20 +601,15 @@ case "$1" in
         uninstall_singbox
         ;;
     restart)
-        restart_singbox
+        check_install && restart_singbox
         ;;
     status)
-        status_singbox
+        check_install && status_singbox
         ;;
     update)
-        update_singbox "$2"
+        check_install && update_singbox "$2"
         ;;
     *)
-        echo "用法:"
-        echo "  $0 install [端口]  — 安装/覆盖配置"
-        echo "  $0 uninstall       — 卸载"
-        echo "  $0 restart         — 重启服务"
-        echo "  $0 status          — 查看状态"
-        echo "  $0 update [端口]   — 仅更新二进制+重启"
+        show_menu
         ;;
 esac
