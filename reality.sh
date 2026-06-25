@@ -324,7 +324,7 @@ install_singbox() {
         exit 1
     fi
 
-    clear
+    [[ -n "$TERM" ]] && clear
     logo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     blue "            Sing-box 一键安装脚本"
@@ -479,7 +479,7 @@ restart_singbox() {
 
 # ===================== 状态显示（install.sh 风格） =====================
 status_singbox() {
-    clear
+    [[ -n "$TERM" ]] && clear
     get_sysinfo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     echo -e "系统:${blue}$release${plain}  内核:${blue}$version${plain}  处理器:${blue}$cpu${plain}  虚拟化:${blue}$vi${plain}  BBR算法:${blue}$bbr_val${plain}"
@@ -538,7 +538,7 @@ logo() {
 }
 
 show_menu() {
-    clear
+    [[ -n "$TERM" ]] && clear
     get_sysinfo
     logo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
