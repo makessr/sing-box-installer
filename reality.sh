@@ -329,13 +329,9 @@ generate_config() {
   ],
   "outbounds": [
     {
-      "type": "direct",
-      "tag": "direct-out"
+      "type": "direct"
     }
-  ],
-  "route": {
-    "final": "direct-out"
-  }
+  ]
 }
 EOF
 
