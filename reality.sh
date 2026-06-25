@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# ===================== 颜色定义（install.sh 风格） =====================
+# ===================== 颜色定义 =====================
 sred='\033[5;31m'
 red='\033[0;31m'
 green='\033[0;32m'
@@ -307,6 +307,9 @@ generate_config() {
 }
 EOF
 
+    # 在 config.json 中嵌入 PublicKey（sing-box 忽略未知字段）
+    jq --arg pk "$pub_key" '._pubkey = $pk' "$CONFIG_FILE" > /tmp/config.json && mv /tmp/config.json "$CONFIG_FILE"
+
     echo "验证配置文件..."
     $BIN_FILE check -c "$CONFIG_FILE"
 
@@ -490,7 +493,7 @@ restart_singbox() {
     fi
 }
 
-# ===================== 状态显示（install.sh 风格） =====================
+# ===================== 状态显示 =====================
 status_singbox() {
     [[ -n "$TERM" ]] && clear
     get_sysinfo
@@ -549,9 +552,11 @@ show_config() {
         shortid=$(grep -oP '"short_id": \["\K[^"]+' "$CONFIG_FILE")
         hy2_pass=$(grep -oP '"password": "\K[^"]+' "$CONFIG_FILE")
         priv_key=$(grep -oP '"private_key": "\K[^"]+' "$CONFIG_FILE")
+        # PublicKey 从 config.json 的 _pubkey 字段提取（v2+ 版本保存）
+        pubkey=$(grep -oP '"_pubkey": "\K[^"]+' "$CONFIG_FILE")
 
-        # PublicKey 无法从 PrivateKey 直接计算，提示用户
-        if [[ -n "$priv_key" ]]; then
+        # 兼容旧版本：没有 _pubkey 字段则提示重装
+        if [[ -z "$pubkey" && -n "$priv_key" ]]; then
             pubkey="无法获取（建议重新安装）"
         fi
 
@@ -596,6 +601,8 @@ show_config() {
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     if [[ -f "$INFO_FILE" ]]; then
         blue "配置信息文件: $INFO_FILE"
+    elif [[ -n "$pubkey" && "$pubkey" != "无法获取（建议重新安装）" ]]; then
+        blue "配置信息: 从 config.json 提取（部分字段）"
     else
         yellow "提示: 缺少配置信息文件，PublicKey 无法获取"
         yellow "建议: 重新安装以生成完整配置信息文件"
@@ -630,7 +637,7 @@ update_singbox() {
     esac
 }
 
-# ===================== 菜单（install.sh 风格） =====================
+# ===================== 菜单 =====================
 logo() {
     echo -e "${bblue} __    ____  _   _______   ______  ________ ${plain}"
     echo -e "${bblue}/ /   / __ \/ | / /__  /  / ____/ /  _/ __ \ ${plain}"
