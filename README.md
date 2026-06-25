@@ -1,6 +1,6 @@
 # Sing-box 一键安装脚本
 
-一键安装 **VLESS Reality + Hysteria2** 双协议代理，带交互式管理菜单。
+一键安装 **VLESS Reality + Hysteria2 + TUIC** 三协议代理，带交互式管理菜单。
 
 ```
  __    ____  _   _______   ______  ________ 
@@ -82,6 +82,14 @@ Hysteria2 节点：
   SNI: bing.com
   链接:
   hysteria2://d3m+mB9s8nfLMwUh5DeY9A==@1.2.3.4:36904?sni=bing.com&insecure=1&alpn=h3#Hysteria2
+
+TUIC 节点：
+  端口: 36905
+  UUID: b0ddd162-3648-4e7a-845b-d2af7c7c710b
+  密码: xxxxxxxxxxxxxxxxxxxx
+  SNI: bing.com
+  链接:
+  tuic://b0ddd162-...@1.2.3.4:36905?congestion_control=bbr&sni=bing.com&alpn=h3&udp_relay_mode=native#Tuic
 ```
 
 系统状态面板：
@@ -117,7 +125,10 @@ A: 重新运行 `bash reality.sh install [新端口]`，旧配置会自动备份
 A: 客户端需设置 `insecure=1`（跳过自签证书验证）和 `alpn=h3`。
 
 **Q: 安装后没看到 PublicKey？**
-A: 旧版安装的 `config.json` 没有 `_pubkey` 字段，运行 `fix` 即可补全。
+A: 旧版安装的 `config.json` 没有 `_pubkey` 字段，选菜单 `6` 自动修复。
+
+**Q: TUIC 节点怎么用？**
+A: TUIC 是 sing-box 原生支持的 UDP 代理协议，推荐用于游戏、视频通话等对延迟敏感的场景。使用 sing-box / NekoBox / Shadowrocket 等客户端，粘贴 `tuic://` 链接即可。
 
 ## 说明
 

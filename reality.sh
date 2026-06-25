@@ -232,7 +232,7 @@ check_port() {
 generate_config() {
     local port=$1
     local uuid keypair priv_key pub_key short_id
-    local hy2_port hy2_pass
+    local hy2_port hy2_pass tuic_port tuic_pass
 
     uuid=$(cat /proc/sys/kernel/random/uuid)
     keypair=$($BIN_FILE generate reality-keypair)
@@ -241,6 +241,8 @@ generate_config() {
     short_id=$(openssl rand -hex 4)
     hy2_port=$((port + 1))
     hy2_pass=$(openssl rand -base64 16)
+    tuic_port=$((port + 2))
+    tuic_pass=$(openssl rand -base64 16)
 
     mkdir -p "$CONFIG_DIR"
 
@@ -297,6 +299,24 @@ generate_config() {
         "key_path": "$CONFIG_DIR/hy2.key",
         "certificate_path": "$CONFIG_DIR/hy2.crt"
       }
+    },
+    {
+      "type": "tuic",
+      "listen": "::",
+      "listen_port": $tuic_port,
+      "users": [
+        {
+          "uuid": "$uuid",
+          "password": "$tuic_pass"
+        }
+      ],
+      "congestion_control": "bbr",
+      "tls": {
+        "enabled": true,
+        "server_name": "bing.com",
+        "key_path": "$CONFIG_DIR/hy2.key",
+        "certificate_path": "$CONFIG_DIR/hy2.crt"
+      }
     }
   ],
   "outbounds": [
@@ -319,6 +339,8 @@ EOF
     CONFIG_PORT=$port
     CONFIG_HY2_PORT=$hy2_port
     CONFIG_HY2_PASS=$hy2_pass
+    CONFIG_TUIC_PORT=$tuic_port
+    CONFIG_TUIC_PASS=$tuic_pass
 }
 
 # ===================== 安装入口 =====================
@@ -372,7 +394,7 @@ install_singbox() {
     else
         while :; do
             PORT=$((RANDOM % 20001 + 30000))
-            check_port "$PORT" && check_port $((PORT + 1)) && break
+            check_port "$PORT" && check_port $((PORT + 1)) && check_port $((PORT + 2)) && break
         done
         blue "使用随机端口: $PORT"
     fi
@@ -419,6 +441,7 @@ EOF
     SERVER_IP=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
     VLESS_URL="vless://${CONFIG_UUID}@${SERVER_IP}:${CONFIG_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=ios&pbk=${CONFIG_PUBKEY}&sid=${CONFIG_SHORTID}&type=tcp#Reality"
     HY2_URL="hysteria2://${CONFIG_HY2_PASS}@${SERVER_IP}:${CONFIG_HY2_PORT}?sni=bing.com&insecure=1&alpn=h3#Hysteria2"
+    TUIC_URL="tuic://${CONFIG_UUID}:${CONFIG_TUIC_PASS}@${SERVER_IP}:${CONFIG_TUIC_PORT}?congestion_control=bbr&sni=bing.com&alpn=h3&udp_relay_mode=native#Tuic"
 
     # 9. 输出（install.sh 风格）
     echo "----------------------------------------------------------------------"
@@ -440,6 +463,14 @@ EOF
     echo "  SNI: bing.com"
     echo "  链接:"
     green "  $HY2_URL"
+    echo ""
+    blue "TUIC 节点："
+    echo "  端口: $CONFIG_TUIC_PORT"
+    echo "  UUID: $CONFIG_UUID"
+    echo "  密码: $CONFIG_TUIC_PASS"
+    echo "  SNI: bing.com"
+    echo "  链接:"
+    green "  $TUIC_URL"
     echo "----------------------------------------------------------------------"
     echo ""
     # 10. 保存配置信息
@@ -450,6 +481,8 @@ VLESS_PUBKEY=$CONFIG_PUBKEY
 VLESS_SHORTID=$CONFIG_SHORTID
 HY2_PORT=$CONFIG_HY2_PORT
 HY2_PASS=$CONFIG_HY2_PASS
+TUIC_PORT=$CONFIG_TUIC_PORT
+TUIC_PASS=$CONFIG_TUIC_PASS
 SERVER_IP=$SERVER_IP
 EOF
     green "配置信息已保存到: $INFO_FILE"
@@ -506,11 +539,13 @@ status_singbox() {
     echo ""
     blue "端口监听："
     if [[ -f "$CONFIG_FILE" ]]; then
-        local rport hport
+        local rport hport tport
         rport=$(jq -r '.inbounds[0].listen_port // empty' "$CONFIG_FILE")
         hport=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
+        tport=$(jq -r '.inbounds[2].listen_port // empty' "$CONFIG_FILE")
         echo -e "  VLESS Reality: ${blue}${rport:-未知}${plain}"
         echo -e "  Hysteria2:     ${blue}${hport:-未知}${plain}"
+        echo -e "  TUIC:          ${blue}${tport:-未知}${plain}"
     else
         echo -e "  无配置文件"
     fi
@@ -540,17 +575,21 @@ show_config() {
         local shortid=$VLESS_SHORTID
         local hy2_port=$HY2_PORT
         local hy2_pass=$HY2_PASS
+        local tuic_port=$TUIC_PORT
+        local tuic_pass=$TUIC_PASS
         local server_ip=$SERVER_IP
     else
         # 如果 info.txt 不存在，从 config.json 提取（但 PublicKey 无法获取）
         yellow "配置信息文件不存在，从配置文件提取..."
-        local port uuid priv_key pubkey shortid hy2_port hy2_pass server_ip
+        local port uuid priv_key pubkey shortid hy2_port hy2_pass tuic_port tuic_pass server_ip
 
         port=$(jq -r '.inbounds[0].listen_port // empty' "$CONFIG_FILE")
         hy2_port=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
         uuid=$(jq -r '.inbounds[0].users[0].uuid // empty' "$CONFIG_FILE")
         shortid=$(jq -r '.inbounds[0].tls.reality.short_id[0] // empty' "$CONFIG_FILE")
         hy2_pass=$(jq -r '.inbounds[1].users[0].password // empty' "$CONFIG_FILE")
+        tuic_port=$(jq -r '.inbounds[2].listen_port // empty' "$CONFIG_FILE")
+        tuic_pass=$(jq -r '.inbounds[2].users[0].password // empty' "$CONFIG_FILE")
         priv_key=$(jq -r '.inbounds[0].tls.reality.private_key // empty' "$CONFIG_FILE")
         # PublicKey 从 config.json 的 _pubkey 字段提取（v2+ 版本保存）
         pubkey=$(jq -r '._pubkey // empty' "$CONFIG_FILE")
@@ -569,6 +608,9 @@ show_config() {
     fi
     if [[ -n "$hy2_port" && -n "$hy2_pass" ]]; then
         local hy2_url="hysteria2://${hy2_pass}@${server_ip}:${hy2_port}?sni=bing.com&insecure=1&alpn=h3#Hysteria2"
+    fi
+    if [[ -n "$tuic_port" && -n "$tuic_pass" && -n "$uuid" ]]; then
+        local tuic_url="tuic://${uuid}:${tuic_pass}@${server_ip}:${tuic_port}?congestion_control=bbr&sni=bing.com&alpn=h3&udp_relay_mode=native#Tuic"
     fi
 
     echo ""
@@ -593,6 +635,19 @@ show_config() {
     if [[ -n "$hy2_url" ]]; then
         echo "  链接:"
         green "  $hy2_url"
+    else
+        yellow "  链接: 无法生成（缺少必要信息）"
+    fi
+
+    echo ""
+    blue "TUIC 节点："
+    echo "  端口: ${tuic_port:-未知}"
+    echo "  UUID: ${uuid:-未知}"
+    echo "  密码: ${tuic_pass:-未知}"
+    echo "  SNI: bing.com"
+    if [[ -n "$tuic_url" ]]; then
+        echo "  链接:"
+        green "  $tuic_url"
     else
         yellow "  链接: 无法生成（缺少必要信息）"
     fi
@@ -718,12 +773,14 @@ except Exception:
     green "PublicKey 已写入 config.json"
 
     # 重建 info.txt
-    local port uuid shortid hy2_port hy2_pass server_ip
+    local port uuid shortid hy2_port hy2_pass tuic_port tuic_pass server_ip
     port=$(jq -r '.inbounds[0].listen_port' "$CONFIG_FILE")
     hy2_port=$(jq -r '.inbounds[1].listen_port // empty' "$CONFIG_FILE")
     uuid=$(jq -r '.inbounds[0].users[0].uuid // empty' "$CONFIG_FILE")
     shortid=$(jq -r '.inbounds[0].tls.reality.short_id[0] // empty' "$CONFIG_FILE")
     hy2_pass=$(jq -r '.inbounds[1].users[0].password // empty' "$CONFIG_FILE")
+    tuic_port=$(jq -r '.inbounds[2].listen_port // empty' "$CONFIG_FILE")
+    tuic_pass=$(jq -r '.inbounds[2].users[0].password // empty' "$CONFIG_FILE")
     server_ip=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
 
     cat > "$INFO_FILE" <<EOF
@@ -733,6 +790,8 @@ VLESS_PUBKEY=$pub_key
 VLESS_SHORTID=$shortid
 HY2_PORT=$hy2_port
 HY2_PASS=$hy2_pass
+TUIC_PORT=$tuic_port
+TUIC_PASS=$tuic_pass
 SERVER_IP=$server_ip
 EOF
     green "配置信息已保存到: $INFO_FILE"
