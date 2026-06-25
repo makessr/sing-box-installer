@@ -223,7 +223,8 @@ download_singbox() {
 # ===================== 端口检测 =====================
 check_port() {
     local port=$1
-    if ss -tlnp "sport = :$port" 2>/dev/null | grep -q .; then
+    # ss -tlnp 输出有表头行，grep LISTEN 排除表头
+    if ss -tlnp "sport = :$port" 2>/dev/null | grep -q LISTEN; then
         local prog
         prog=$(ss -tlnp "sport = :$port" 2>/dev/null | grep -oP 'users:\(\("\K[^"]+' || echo "未知")
         yellow "端口 $port 已被 $prog 占用"
