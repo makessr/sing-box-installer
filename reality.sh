@@ -456,7 +456,7 @@ EOF
     SERVER_IP=$(curl -s --max-time 5 ipv4.icanhazip.com || curl -s --max-time 5 ifconfig.me || curl -s --max-time 5 api.ip.sb)
     VLESS_URL="vless://${CONFIG_UUID}@${SERVER_IP}:${CONFIG_PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=gateway.icloud.com&fp=chrome&pbk=${CONFIG_PUBKEY}&sid=${CONFIG_SHORTID}&type=tcp&headerType=none#Reality"
     HY2_URL="hysteria2://${CONFIG_HY2_PASS}@${SERVER_IP}:${CONFIG_HY2_PORT}?security=tls&alpn=h3&sni=bing.com&pinSHA256=${CONFIG_SHA256}#Hysteria2"
-    TUIC_URL="tuic://${CONFIG_UUID}:${CONFIG_TUIC_PASS}@${SERVER_IP}:${CONFIG_TUIC_PORT}?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=bing.com&insecure=1#Tuic"
+    TUIC_URL="tuic://${CONFIG_UUID}:${CONFIG_TUIC_PASS}@${SERVER_IP}:${CONFIG_TUIC_PORT}?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=bing.com&allow_insecure=1#Tuic"
 
     # 9. 输出（install.sh 风格）
     echo "----------------------------------------------------------------------"
@@ -634,7 +634,7 @@ show_config() {
         local hy2_url="hysteria2://${hy2_pass}@${server_ip}:${hy2_port}?security=tls&alpn=h3&sni=bing.com&pinSHA256=${hy2_sha256}#Hysteria2"
     fi
     if [[ -n "$tuic_port" && -n "$tuic_pass" && -n "$uuid" ]]; then
-        local tuic_url="tuic://${uuid}:${tuic_pass}@${server_ip}:${tuic_port}?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=bing.com&insecure=1#Tuic"
+        local tuic_url="tuic://${uuid}:${tuic_pass}@${server_ip}:${tuic_port}?congestion_control=bbr&udp_relay_mode=native&alpn=h3&sni=bing.com&allow_insecure=1#Tuic"
     fi
 
     echo ""
