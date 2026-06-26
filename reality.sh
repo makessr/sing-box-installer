@@ -849,8 +849,9 @@ show_menu() {
     get_sysinfo
     logo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    echo -e "${bblue}Sing-box一键安装hysteria2+VLESS Reality管理脚本${plain}"
+    echo -e "${bblue}Sing-box一键安装hysteria2+VLESS Reality+TUIC v5脚本${plain}"
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
+    white "博客:https://lonze.io"
     white "项目:github.com/makessr/sing-box-installer"
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
