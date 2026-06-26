@@ -292,8 +292,6 @@ generate_config() {
     },
     {
       "type": "hysteria2",
-      "sniff": true,
-      "sniff_override_destination": true,
       "listen": "::",
       "listen_port": $hy2_port,
       "users": [
@@ -312,8 +310,6 @@ generate_config() {
     },
     {
       "type": "tuic",
-      "sniff": true,
-      "sniff_override_destination": true,
       "listen": "::",
       "listen_port": $tuic_port,
       "users": [
