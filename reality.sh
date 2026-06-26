@@ -292,6 +292,8 @@ generate_config() {
     },
     {
       "type": "hysteria2",
+      "sniff": true,
+      "sniff_override_destination": true,
       "listen": "::",
       "listen_port": $hy2_port,
       "up_mbps": 100,
@@ -301,8 +303,10 @@ generate_config() {
           "password": "$hy2_pass"
         }
       ],
+      "ignore_client_bandwidth": false,
       "tls": {
         "enabled": true,
+        "alpn": ["h3"],
         "server_name": "bing.com",
         "key_path": "$CONFIG_DIR/hy2.key",
         "certificate_path": "$CONFIG_DIR/hy2.crt"
@@ -310,6 +314,8 @@ generate_config() {
     },
     {
       "type": "tuic",
+      "sniff": true,
+      "sniff_override_destination": true,
       "listen": "::",
       "listen_port": $tuic_port,
       "users": [
@@ -321,6 +327,7 @@ generate_config() {
       "congestion_control": "bbr",
       "tls": {
         "enabled": true,
+        "alpn": ["h3"],
         "server_name": "bing.com",
         "key_path": "$CONFIG_DIR/hy2.key",
         "certificate_path": "$CONFIG_DIR/hy2.crt"
