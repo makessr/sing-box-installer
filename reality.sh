@@ -296,8 +296,6 @@ generate_config() {
       "sniff_override_destination": true,
       "listen": "::",
       "listen_port": $hy2_port,
-      "up_mbps": 100,
-      "down_mbps": 100,
       "users": [
         {
           "password": "$hy2_pass"
