@@ -332,7 +332,15 @@ generate_config() {
     {
       "type": "direct"
     }
-  ]
+  ],
+  "route": {
+    "rules": [
+      {
+        "action": "sniff"
+      }
+    ],
+    "final": "direct"
+  }
 }
 EOF
 
