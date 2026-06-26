@@ -246,7 +246,7 @@ generate_config() {
     pub_key=$(echo "$keypair" | sed -n 's/^PublicKey:\s*//p')
     short_id=$($BIN_FILE generate rand --hex 4)
     hy2_port=$((port + 1))
-    hy2_pass=$($BIN_FILE generate rand --base64 16)
+    hy2_pass=$($BIN_FILE generate rand --hex 16)
     tuic_port=$((port + 2))
     tuic_pass=$($BIN_FILE generate rand --base64 16)
 
@@ -304,7 +304,6 @@ generate_config() {
       "tls": {
         "enabled": true,
         "alpn": ["h3"],
-        "server_name": "bing.com",
         "key_path": "$CONFIG_DIR/hy2.key",
         "certificate_path": "$CONFIG_DIR/hy2.crt"
       }
@@ -323,7 +322,6 @@ generate_config() {
       "tls": {
         "enabled": true,
         "alpn": ["h3"],
-        "server_name": "bing.com",
         "key_path": "$CONFIG_DIR/hy2.key",
         "certificate_path": "$CONFIG_DIR/hy2.crt"
       }
