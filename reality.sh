@@ -872,7 +872,7 @@ show_menu() {
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     readp "请输入数字【0-6】:" Input
     case "$Input" in
-        1) install_singbox;;
+        1) install_singbox && back;;
         2) check_install && uninstall_singbox;;
         3) check_install && restart_singbox;;
         4) check_install && status_singbox && back;;
