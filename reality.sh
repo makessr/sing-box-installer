@@ -849,9 +849,8 @@ show_menu() {
     get_sysinfo
     logo
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    echo -e "${bblue}Sing-box一键安装hysteria2+VLESS Reality+TUIC v5脚本${plain}"
+    echo -e "${bblue}Sing-box一键安装hysteria2+VLESS Reality管理脚本${plain}"
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
-    white "博客:https://lonze.io"
     white "项目:github.com/makessr/sing-box-installer"
     white "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
@@ -873,7 +872,7 @@ show_menu() {
     red "~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~"
     readp "请输入数字【0-6】:" Input
     case "$Input" in
-        1) check_uninstall && install_singbox;;
+        1) install_singbox;;
         2) check_install && uninstall_singbox;;
         3) check_install && restart_singbox;;
         4) check_install && status_singbox && back;;
