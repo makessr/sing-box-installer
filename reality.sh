@@ -252,7 +252,8 @@ generate_config() {
 
     mkdir -p "$CONFIG_DIR"
 
-    # 自签证书
+    # 自签证书（强制重新生成，避免旧文件不匹配）
+    rm -f "$CONFIG_DIR/hy2.key" "$CONFIG_DIR/hy2.crt"
     openssl req -x509 -nodes -newkey rsa:2048 \
       -days 3650 -keyout "$CONFIG_DIR/hy2.key" -out "$CONFIG_DIR/hy2.crt" \
       -subj "/CN=bing.com" 2>/dev/null
@@ -330,7 +331,8 @@ generate_config() {
   ],
   "outbounds": [
     {
-      "type": "direct"
+      "type": "direct",
+      "tag": "direct"
     }
   ],
   "route": {
